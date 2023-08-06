@@ -1,0 +1,17 @@
+torch
+torchvision
+segmentation-models-pytorch
+opencv-python
+scikit-image
+Pillow
+scipy
+numpy
+pytorch-lightning
+matplotlib
+imagecodecs
+wandb
+tqdm
+torchmetrics
+torchio
+albumentations
+kornia

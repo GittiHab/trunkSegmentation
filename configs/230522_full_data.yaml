@@ -1,0 +1,52 @@
+name: 'Train on Full Data'
+logging: true
+tags:
+  - real
+
+learning_rate: 0.001
+lr_factor: 0.1
+lr_patience: 5
+
+batch_size: 32
+epochs: 70
+
+patch_size: 64
+stride: 32
+
+image_path: 'D:/Pius/raw data/hoas_lh_tip_crop.tif'
+label_path: 'D:/Pius/Data/FingerSegmentation.tif'
+mask_path: 'D:/Pius/Data/Runs/R6-1_Mask.tiff'
+cache: true
+cache_path: './cache/cache_v2'
+train_val_split_ration: 1.
+drop_until_equal: false
+keep_extra: 0.25
+
+#loss_weights:
+#  - 0.3
+#  - 0.7
+
+encoder:
+  name: 'efficientnet-b3'
+#  weights: 'imagenet'
+
+transforms:
+  general:
+    - Clip:
+       min_val: 90
+       max_val: 195
+  train:
+    - Blur:
+        blur_limit: 5
+    - HorizontalFlip:
+    - VerticalFlip:
+    - Rotate:
+        limit: 45
+        border_mode: 'BORDER_REFLECT_101'
+
+early_stopping:
+  patience: 10
+  min_delta: 0.0
+
+seeds:
+  data: 476

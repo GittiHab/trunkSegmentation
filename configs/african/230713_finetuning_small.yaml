@@ -1,0 +1,65 @@
+name: 'African Finetuning - Smaller Patches'
+trainer: binary
+logging: true
+tags:
+  - real
+  - finetuning
+  - african
+
+load_model: 'trunk-segmentation/2ixkh869/checkpoints/last.ckpt'
+
+learning_rate: 0.001
+lr_factor: 0.1
+lr_patience: 5
+
+batch_size: 32
+epochs: 100
+min_epochs: 40
+
+patch_size: 64
+stride: 42
+
+datasets:
+  image_path: 'D:/Pius/African Data/20221026_Indra_tip_qual_cropped_8bit.tiff'
+  label_path: 'D:/Pius/African Data/20221026_Indra_tip_qual_cropped_labels_AUGMENTED.tif'
+  train:
+    mask_path: 'D:/Pius/African Data/mask_train.tiff'
+    cache_path: './cache/african_v1'
+  val:
+    mask_path: 'D:/Pius/African Data/mask_val.tiff'
+    cache_path: './cache/african_v1_val'
+cache: true
+train_val_split_ration: 1
+pad_mode: 'reflect'
+pad_masked: 41
+drop_until_equal: false
+keep_extra: 0.25
+
+encoder:
+  name: 'efficientnet-b5'
+#  weights: 'imagenet'
+
+transforms:
+  general:
+    - Clip:
+       min_val: 74
+       max_val: 108
+  train:
+    - Blur:
+        blur_limit: 5
+    - GaussNoise:
+        var_limit: 10.
+    - HorizontalFlip:
+    - VerticalFlip:
+    - Rotate:
+        limit: 45
+        border_mode: 'BORDER_REFLECT_101'
+
+early_stopping:
+  patience: 10
+  min_delta: 0.002
+  metric: 'val_dice'
+  mode: 'max'
+
+seeds:
+  data: 476

@@ -1,0 +1,62 @@
+name: 'More Data - Focal 2'
+trainer: multi
+loss: focal
+logging: true
+tags:
+  - real
+
+learning_rate: 0.001
+lr_factor: 0.1
+lr_patience: 5
+
+batch_size: 32
+epochs: 100
+min_epochs: 40
+
+patch_size: 128
+stride: 84
+
+datasets:
+  image_path: 'D:/Pius/raw data/hoas_lh_tip_crop.tif'
+  label_path: 'D:/Pius/Data/FingerSegmentation.tif'
+  train:
+    mask_path: 'D:/Pius/Data/Runs/R6-2_Mask.tiff'
+    cache_path: './cache/cache_v3'
+  val:
+    mask_path: 'D:/Pius/Data/Runs/validation_mask_extended.tiff'
+    cache_path: './cache/cache_v3_val'
+cache: true
+train_val_split_ration: 1
+pad_mode: 'reflect'
+pad_masked: 42
+drop_until_equal: false
+keep_extra: 0.25
+
+encoder:
+  name: 'efficientnet-b3'
+#  weights: 'imagenet'
+
+transforms:
+  general:
+    - Clip:
+       min_val: 90
+       max_val: 195
+  train:
+    - Blur:
+        blur_limit: 5
+    - GaussNoise:
+        var_limit: 10.
+    - HorizontalFlip:
+    - VerticalFlip:
+    - Rotate:
+        limit: 45
+        border_mode: 'BORDER_REFLECT_101'
+
+early_stopping:
+  patience: 10
+  min_delta: 0.002
+  metric: 'val_dice'
+  mode: 'max'
+
+seeds:
+  data: 476
