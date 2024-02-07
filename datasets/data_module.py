@@ -60,6 +60,7 @@ class SegmentationDataModule(pl.LightningDataModule):
                                condition=self.config['cache'],
                                path=cache_path
                                ),
+            P.Conditional(P.BinaryNorm(), self.config.get('binary_norm', False)),
             P.Conditional(P.DropUntilEqual(self.config.get('keep_extra', 0.1)),
                           self.config['drop_until_equal']),
             P.Conditional(P.Padding(self.config.get('pad_masked', self.config['stride']),

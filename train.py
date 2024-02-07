@@ -33,6 +33,7 @@ def main(config):
         print('Logging disabled.')
 
     # Create the PyTorch Lightning trainer
+    save_intermediate_checkpoints = config.get('save_checkpoints_every', 0)
     trainer = pl.Trainer(max_epochs=config['epochs'],
                          callbacks=[
                              EarlyStoppingMinEpochs(config.get('min_epochs', 0),
@@ -41,10 +42,10 @@ def main(config):
                                                     patience=config['early_stopping']['patience'],
                                                     min_delta=config['early_stopping']['min_delta']),
                              ModelCheckpoint(save_last=True,
-                                             save_top_k=1,
+                                             save_top_k=1 if save_intermediate_checkpoints > 0 else 0,
                                              monitor=config['early_stopping'].get('metric', 'val_loss'),
                                              mode="min",
-                                             every_n_epochs=config.get('save_checkpoints_every', 0))],
+                                             every_n_epochs=save_intermediate_checkpoints)],
                          logger=wandb_logger)
 
     # Train the model

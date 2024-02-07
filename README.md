@@ -93,7 +93,7 @@ All data is expected as a multi-/3D-tiff with the same dimensions.
 ### Training
 To train a model, you can use the `python train.py` command:
 
-    train.py [-h] [--config CONFIG]
+    python train.py [-h] [--config CONFIG]
     options:
        -h, --help            show this help message and exit
       --config CONFIG, -C CONFIG, -c CONFIG

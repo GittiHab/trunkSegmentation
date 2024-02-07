@@ -207,6 +207,30 @@ class DropUntilEqual(Preprocessing):
     def _apply(self, images, labels, masks, axis) -> Tuple[Union[np.ndarray, Iterable], Union[np.ndarray, Iterable]]:
         return drop_equalize(images, labels, self.extra_classes)
 
+class BinaryNorm(Preprocessing):
+    def __init__(self, skip_unsupported: bool = False):
+        self.skip_unsupported = skip_unsupported
+
+    def _apply(self, images, labels, masks, axis) -> Tuple[Union[np.ndarray, Iterable], Union[np.ndarray, Iterable]]:
+        if isinstance(labels, np.ndarray):
+            unique_labels = np.unique(labels)
+            if len(unique_labels) > 2:
+                raise AssertionError('More than two unique label values not supported by *binary* norm.')
+            max_label = unique_labels.max()
+            if max_label > 1:
+                labels = (labels == max_label).astype(labels.dtype)
+            return images, labels
+        if isinstance(labels, list):
+            unique_labels = np.unique(np.concatenate([np.unique(l) for l in labels]))
+            if len(unique_labels) > 2:
+                raise AssertionError('More than two unique label values not supported by *binary* norm.')
+            max_label = unique_labels.max()
+            if max_label > 1:
+                labels = [(l == max_label).astype(l.dtype) for l in labels]
+            return images, labels
+        if not self.skip_unsupported:
+            raise NotImplementedError('BinaryNorm only supports list and numpy array type labels.')
+        warnings.warn('SKIPPING BinaryNorm! BinaryNorm only supports list and numpy array type labels.')
 
 class CLAHE(Identity):
     pass  # TODO: implement

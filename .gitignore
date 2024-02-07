@@ -1,0 +1,11 @@
+.idea
+wandb
+trunk-segmentation
+.ipynb_checkpoints
+lightning_logs
+cache
+*.ckpt
+notebooks/data
+config_local.yaml
+*/exports/*.tiff
+__pycache__
