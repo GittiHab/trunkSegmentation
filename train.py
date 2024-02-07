@@ -28,6 +28,7 @@ def main(config):
             wandb_logger.experiment.config.update(config)
             print('W&B logging connected.')
         except Exception:
+            wandb_logger = None
             warnings.warn('Skipping wandb logging')
     else:
         print('Logging disabled.')
