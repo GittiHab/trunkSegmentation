@@ -1,18 +1,14 @@
-import warnings
-from typing import Sequence, Optional
+from typing import Optional
 
 import numpy as np
-import skimage.io
 import torch
 import torchvision.transforms.v2
-from torchvision import transforms
 from PIL import Image
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
 from datasets.preprocessing import Preprocessing
-from utils.dataset_utils import get_slice, extract_masked_regions, extract_patches, as_one_hot, save_cache, \
-    cache_exists, load_cached, drop_equalize
+from utils.dataset_utils import get_slice, extract_patches, as_one_hot
 
 
 class BaseDataset(Dataset):
@@ -131,5 +127,5 @@ class GridTiledDataset(BaseDataset):
 
 
 class RandomPatchDataset(BaseDataset):
-    def __int__(self):
+    def __init__(self):
         raise NotImplementedError()

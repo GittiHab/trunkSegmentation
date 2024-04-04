@@ -12,9 +12,9 @@ def extract_encoder_params(config):
     return config['encoder']['name'], config['encoder']['weights']
 
 
-def read_transforms(transform_config):
+def read_transforms(transform_config) -> list:
     if len(transform_config) < 1:
-        return None
+        return []
     transformations = []
     for transform in transform_config:
         name = list(transform.keys())[0]
@@ -27,6 +27,4 @@ def read_transforms(transform_config):
         if name == 'Rotate' and 'border_mode' in params:
             params['border_mode'] = getattr(cv2, params['border_mode'])
         transformations.append(method(**params) if params is not None else method())
-    if len(transformations) > 1:
-        return A.Compose(transformations)
-    return transformations[0]
+    return transformations

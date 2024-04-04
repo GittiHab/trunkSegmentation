@@ -6,10 +6,10 @@ from inference.predictor import ImagePredictor
 from utils.inference_utils import output_name, load_single_slice, load_image, is_single_image
 
 
-def main(model_path, data_path, output_path, module_name, idx=None, axis=None, stride=None, raw=False):
+def main(model_path, data_path, output_path, module_name, idx=None, axis=None, stride=None, raw=False, data=None):
     print('Started')
     axis_pred = axis if not is_single_image(idx, axis) else 0
-    predictor = ImagePredictor(model_path, module_name, axis=axis_pred, stride=stride, raw=raw)
+    predictor = ImagePredictor(model_path, module_name, axis=axis_pred, stride=stride, raw=raw, dataset=data)
     if is_single_image(idx, axis):
         input_image = load_single_slice(data_path, idx, axis)
     else:
@@ -38,8 +38,20 @@ if __name__ == '__main__':
                         help='(Optional) Override stride used when tiling image. Set to 0 for no overlap.')
     parser.add_argument('--raw', '-R', action='store_true',
                         help='(Optional) Save raw predicted values instead of argmax/rounded ones.')
+    parser.add_argument('--data', '-D', type=str, required=False, default=None,
+                        help='(If multi data sources during training) '
+                             'Either specify path to a yaml containing a *single* datasets configuration or an integer '
+                             'index to the dataset in the original config of which the transformations should be used.')
 
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO)  # Set desired log level
 
-    main(args.model_path, args.data_path, args.out_path, args.module, args.index, args.axis, args.stride, args.raw)
+    main(args.model_path,
+         args.data_path,
+         args.out_path,
+         args.module,
+         args.index,
+         args.axis,
+         args.stride,
+         args.raw,
+         args.data)

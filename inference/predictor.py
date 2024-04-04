@@ -1,9 +1,12 @@
 import logging
+from typing import Optional
 
 import torch
 import torch.utils.data
 import torchio as tio
+import yaml
 from tqdm import tqdm
+from albumentations import Compose
 
 from training.segmentation_module import BinarySegmentation
 from utils.config_utils import read_transforms
@@ -11,16 +14,18 @@ from utils.inference_utils import get_training_module, get_patch_dimensions
 
 
 class ImagePredictor:
-    def __init__(self, model_path, module_name, axis=0, stride=None, raw=False):
+    def __init__(self, model_path, module_name, axis=0, stride=None, raw=False, dataset=None):
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.model_path = model_path
         self.module_name = module_name
         self.axis = axis if axis is not None else 0
         self._stride = stride
         self.raw = raw
+        self._dataset_data = dataset
 
         self.model = None
         self.config = None
+        self.dataset_config = None
         self.general_transforms = None
         self.load_model(self.module_name, self.model_path)
 
@@ -36,9 +41,33 @@ class ImagePredictor:
         # Load and initialize the model
         self.model = get_training_module(module_name).load_from_checkpoint(model_path).to(self.device)
         self.config = self.model.config
-        self.general_transforms = read_transforms(self.config['transforms']['general'])
+        self.dataset_config = self._get_dataset_config(self.config, self._dataset_data)
+        self.general_transforms = self.get_transformations()
         self.model.eval()
         logging.info('Loaded model on %s', self.device)
+
+    @staticmethod
+    def _get_dataset_config(config, dataset_data: Optional[str]):
+        if dataset_data is not None and not dataset_data.isnumeric():
+            with open(dataset_data, 'r') as f:
+                dataset_config = yaml.safe_load(f)
+            return dataset_config
+
+        if isinstance(config['datasets'], list):
+            assert dataset_data is not None,\
+                'If training config contains multiple datasets, index or dataset config must be specified.'
+            return config['datasets'][int(dataset_data)]
+
+        return config['datasets']
+
+    def get_transformations(self):
+        general_transforms = read_transforms(self.config['transforms']['general'])
+        if 'transforms' in self.dataset_config:
+            if 'general' in self.dataset_config['transforms']:
+                general_transforms.extend(read_transforms(self.dataset_config['transforms']['general']))
+            if 'infer' in self.dataset_config['transforms']:
+                general_transforms.extend(read_transforms(self.dataset_config['transforms']['infer']))
+        return Compose(general_transforms)
 
     def create_patch_sampler(self, input_image):
         patch_size, stride = get_patch_dimensions(self.axis, self.config['patch_size'],

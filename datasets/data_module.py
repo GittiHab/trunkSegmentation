@@ -1,25 +1,65 @@
-import cv2
+from copy import copy
+
+import albumentations as A
 import pytorch_lightning as pl
 import skimage
 import torch
 from segmentation_models_pytorch.encoders import get_preprocessing_fn
-from torch.utils.data import DataLoader, random_split, Subset
-from copy import copy
-import albumentations as A
-import datasets.preprocessing as P
+from torch.utils.data import DataLoader, random_split, Subset, ConcatDataset
 
+import datasets.preprocessing as P
 from datasets.datasets import GridTiledDataset
-from utils.dataset_utils import expand_seed
 from utils.config_utils import extract_encoder_params, read_transforms
+from utils.dataset_utils import expand_seed
 
 
 class SegmentationDataModule(pl.LightningDataModule):
     def __init__(self, config):
         super().__init__()
         self.config = config
-        self.cache_path = self.config['datasets']['train']['cache_path'] if 'cache_path' in self.config['datasets'][
+        # TODO: I know it is considered bad style that I am essentially always calling the function on the other class.
+        self.source = SingleSource(config) if config['datasets'] is not list else MultiSource(config)
+
+    def prepare_data(self):
+        self.source.prepare_data()
+
+    def train_dataloader(self):
+        # TODO: consider using weighted sampling:
+        #  https://pytorch.org/docs/stable/data.html#torch.utils.data.WeightedRandomSampler or
+        #  https://github.com/ufoym/imbalanced-dataset-sampler
+        return DataLoader(self.source.get_dataset_train(), batch_size=self.config["batch_size"], shuffle=True)
+
+    def val_dataloader(self):
+        return DataLoader(self.source.get_dataset_val(), batch_size=self.config["batch_size"], shuffle=False)
+
+    def setup(self, stage=None):
+        self.source.setup(stage)
+
+
+class DataSource:
+    def __init__(self, config):
+        self.config = config
+
+    def prepare_data(self):
+        raise NotImplementedError()
+
+    def setup(self, stage):
+        raise NotImplementedError()
+
+    def get_dataset_train(self):
+        raise NotImplementedError()
+
+    def get_dataset_val(self):
+        raise NotImplementedError()
+
+
+class SingleSource(DataSource):
+    def __init__(self, config, dataset_config=None):
+        super().__init__(config)
+        self.dataset_config = dataset_config if dataset_config is not None else config['datasets']
+        self.cache_path = self.dataset_config['train']['cache_path'] if 'cache_path' in self.dataset_config[
             'train'] else './cache/train'
-        self.cache_path_val = self.config['datasets']['val']['cache_path'] if 'cache_path' in self.config['datasets'][
+        self.cache_path_val = self.dataset_config['val']['cache_path'] if 'cache_path' in self.dataset_config[
             'val'] else './cache/val'
 
     def prepare_data(self):
@@ -27,27 +67,18 @@ class SegmentationDataModule(pl.LightningDataModule):
                 path=self.cache_path_val).needs_source_data():
             self.image_data, self.label_data, self.mask_data, self.mask_data_val = [], [], [], []
             return
-        multi_img = skimage.io.MultiImage(self.config['datasets']['image_path'])
+        multi_img = skimage.io.MultiImage(self.dataset_config['image_path'])
         self.image_data = multi_img[0]
-        multi_img = skimage.io.MultiImage(self.config['datasets']['label_path'])
+        multi_img = skimage.io.MultiImage(self.dataset_config['label_path'])
         self.label_data = multi_img[0]
         self.mask_data = None
-        if 'mask_path' in self.config['datasets']['train']:
-            multi_img = skimage.io.MultiImage(self.config['datasets']['train']['mask_path'])
+        if 'mask_path' in self.dataset_config['train']:
+            multi_img = skimage.io.MultiImage(self.dataset_config['train']['mask_path'])
             self.mask_data = multi_img[0]
         self.mask_data_val = None
-        if 'mask_path' in self.config['datasets']['val']:
-            multi_img = skimage.io.MultiImage(self.config['datasets']['val']['mask_path'])
+        if 'mask_path' in self.dataset_config['val']:
+            multi_img = skimage.io.MultiImage(self.dataset_config['val']['mask_path'])
             self.mask_data_val = multi_img[0]
-
-    def train_dataloader(self):
-        # TODO: consider using weighted sampling:
-        #  https://pytorch.org/docs/stable/data.html#torch.utils.data.WeightedRandomSampler or
-        #  https://github.com/ufoym/imbalanced-dataset-sampler
-        return DataLoader(self.dataset_train, batch_size=self.config["batch_size"], shuffle=True)
-
-    def val_dataloader(self):
-        return DataLoader(self.dataset_val, batch_size=self.config["batch_size"], shuffle=False)
 
     def own_validation_set(self):
         return self.config['train_val_split_ration'] == 1
@@ -68,13 +99,25 @@ class SegmentationDataModule(pl.LightningDataModule):
                           'pad_masked' in self.config)
         ])
 
-    def setup(self, stage=None):
+    def setup(self, stage):
         seed_fit, seed_test, seed_predict = expand_seed(self.config['seeds']['data'])
 
         if stage == 'fit':
-            # TODO: Put this somewhere else/allow this to be specified in config
+            # TODO: this method has exploded quite a bit. Should be refactored into shorter pieces.
+            #       Especially the transform extraction!
             general_transforms = read_transforms(self.config['transforms']['general'])
             train_transforms = read_transforms(self.config['transforms']['train'])
+
+            general_transforms_ds = None
+            train_transforms_ds = None
+            val_transforms_ds = []
+            if 'transforms' in self.dataset_config:
+                if 'general' in self.dataset_config['transforms']:
+                    general_transforms.extend(read_transforms(self.dataset_config['transforms']['general']))
+                if 'train' in self.dataset_config['transforms']:
+                    train_transforms.extend(read_transforms(self.dataset_config['transforms']['train']))
+                if 'infer' in self.dataset_config['transforms']:
+                    val_transforms_ds = read_transforms(self.dataset_config['transforms']['infer'])
 
             preprocess_fn = None
             encoder_param = extract_encoder_params(self.config)
@@ -88,7 +131,7 @@ class SegmentationDataModule(pl.LightningDataModule):
                                                  mask_data=self.mask_data,
                                                  as_image=False,
                                                  axis=self.config.get('axis', None),
-                                                 transform=A.Compose([general_transforms, train_transforms]),
+                                                 transform=A.Compose(general_transforms + train_transforms),
                                                  preprocessing=self.build_preprocessing_pipeline(self.cache_path),
                                                  preprocess_fn=preprocess_fn,
                                                  patch_size=self.config['patch_size'],
@@ -102,7 +145,7 @@ class SegmentationDataModule(pl.LightningDataModule):
                 self.dataset_train = split[0]
                 # Validation dataset should not have any transformations:
                 self.dataset_val = copy(self.dataset_main)
-                self.dataset_val.transform = general_transforms
+                self.dataset_val.transform = A.Compose(general_transforms + val_transforms_ds)
                 self.dataset_val.name = 'Validation Split'
                 self.dataset_val = Subset(self.dataset_val, indices=split[1].indices)
             else:
@@ -112,10 +155,36 @@ class SegmentationDataModule(pl.LightningDataModule):
                                                     mask_data=self.mask_data_val,
                                                     as_image=False,
                                                     axis=self.config.get('axis', None),
-                                                    transform=A.Compose([general_transforms, train_transforms]),
+                                                    transform=A.Compose(general_transforms + train_transforms),
                                                     preprocessing=self.build_preprocessing_pipeline(
                                                         self.cache_path_val),
                                                     preprocess_fn=preprocess_fn,
                                                     patch_size=self.config['patch_size'],
                                                     stride=self.config['stride'],
                                                     name='Validation')
+
+    def get_dataset_train(self):
+        return self.dataset_train
+    
+    def get_dataset_val(self):
+        return self.dataset_val
+
+
+class MultiSource(DataSource):
+    def __init__(self, config):
+        super().__init__(config)
+        self.sources = [SingleSource(config, dataset_config) for dataset_config in config['datasets']]
+
+    def prepare_data(self):
+        for source in self.sources:
+            source.prepare_data()
+
+    def setup(self, stage):
+        for source in self.sources:
+            source.setup(stage)
+
+    def get_dataset_train(self):
+        return ConcatDataset([source.get_dataset_train() for source in self.sources])
+
+    def get_dataset_val(self):
+        return ConcatDataset([source.get_dataset_val() for source in self.sources])
