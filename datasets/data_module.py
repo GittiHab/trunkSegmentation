@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader, random_split, Subset, ConcatDataset
 
 import datasets.preprocessing as P
 from datasets.datasets import GridTiledDataset
-from utils.config_utils import extract_encoder_params, read_transforms
+from utils.config_utils import extract_encoder_params, read_transforms, extract_all_transforms
 from utils.dataset_utils import expand_seed
 
 
@@ -17,8 +17,7 @@ class SegmentationDataModule(pl.LightningDataModule):
     def __init__(self, config):
         super().__init__()
         self.config = config
-        # TODO: I know it is considered bad style that I am essentially always calling the function on the other class.
-        self.source = SingleSource(config) if config['datasets'] is not list else MultiSource(config)
+        self.source = SingleSource(config) if not isinstance(config['datasets'], list) else MultiSource(config)
 
     def prepare_data(self):
         self.source.prepare_data()
@@ -33,7 +32,15 @@ class SegmentationDataModule(pl.LightningDataModule):
         return DataLoader(self.source.get_dataset_val(), batch_size=self.config["batch_size"], shuffle=False)
 
     def setup(self, stage=None):
-        self.source.setup(stage)
+        general_transforms, train_transforms, val_transforms = [], [], []
+        if stage == 'fit':
+            if 'transforms' in self.config:
+                general_transforms, train_transforms, val_transforms = extract_all_transforms(
+                    self.config['transforms'],
+                    general_transforms,
+                    train_transforms,
+                    val_transforms)
+        self.source.setup(stage, general_transforms, train_transforms, val_transforms)
 
 
 class DataSource:
@@ -43,7 +50,7 @@ class DataSource:
     def prepare_data(self):
         raise NotImplementedError()
 
-    def setup(self, stage):
+    def setup(self, stage, general_transforms, train_transforms, val_transforms):
         raise NotImplementedError()
 
     def get_dataset_train(self):
@@ -99,25 +106,16 @@ class SingleSource(DataSource):
                           'pad_masked' in self.config)
         ])
 
-    def setup(self, stage):
+    def setup(self, stage, general_transforms, train_transforms, val_transforms):
         seed_fit, seed_test, seed_predict = expand_seed(self.config['seeds']['data'])
 
         if stage == 'fit':
-            # TODO: this method has exploded quite a bit. Should be refactored into shorter pieces.
-            #       Especially the transform extraction!
-            general_transforms = read_transforms(self.config['transforms']['general'])
-            train_transforms = read_transforms(self.config['transforms']['train'])
-
-            general_transforms_ds = None
-            train_transforms_ds = None
-            val_transforms_ds = []
             if 'transforms' in self.dataset_config:
-                if 'general' in self.dataset_config['transforms']:
-                    general_transforms.extend(read_transforms(self.dataset_config['transforms']['general']))
-                if 'train' in self.dataset_config['transforms']:
-                    train_transforms.extend(read_transforms(self.dataset_config['transforms']['train']))
-                if 'infer' in self.dataset_config['transforms']:
-                    val_transforms_ds = read_transforms(self.dataset_config['transforms']['infer'])
+                general_transforms, train_transforms, val_transforms = extract_all_transforms(
+                    self.dataset_config['transforms'],
+                    general_transforms,
+                    train_transforms,
+                    val_transforms)
 
             preprocess_fn = None
             encoder_param = extract_encoder_params(self.config)
@@ -145,7 +143,7 @@ class SingleSource(DataSource):
                 self.dataset_train = split[0]
                 # Validation dataset should not have any transformations:
                 self.dataset_val = copy(self.dataset_main)
-                self.dataset_val.transform = A.Compose(general_transforms + val_transforms_ds)
+                self.dataset_val.transform = A.Compose(general_transforms + val_transforms)
                 self.dataset_val.name = 'Validation Split'
                 self.dataset_val = Subset(self.dataset_val, indices=split[1].indices)
             else:
@@ -165,7 +163,7 @@ class SingleSource(DataSource):
 
     def get_dataset_train(self):
         return self.dataset_train
-    
+
     def get_dataset_val(self):
         return self.dataset_val
 
@@ -179,9 +177,9 @@ class MultiSource(DataSource):
         for source in self.sources:
             source.prepare_data()
 
-    def setup(self, stage):
+    def setup(self, stage, general_transforms, train_transforms, val_transforms):
         for source in self.sources:
-            source.setup(stage)
+            source.setup(stage, general_transforms, train_transforms, val_transforms)
 
     def get_dataset_train(self):
         return ConcatDataset([source.get_dataset_train() for source in self.sources])

@@ -35,11 +35,11 @@ class Clip(ImageOnlyTransform):
         # Apply noise if given
         min_val = self.min_val
         if self.min_noise > 0:
-            min_val= np.random.randint(self.min_val - self.min_noise, self.min_val + self.min_noise)
+            min_val= self.min_val + np.random.randint(-self.min_noise, self.min_noise)
             min_val = np.clip(min_val, self.pixel_range[0], self.pixel_range[1])
         max_val = self.max_val
         if self.max_noise > 0:
-            max_val = np.random.randint(self.max_val - self.max_noise, self.max_val + self.max_noise)
+            max_val = self.max_val + np.random.randint(-self.max_noise, self.max_noise)
             max_val = np.clip(max_val, self.pixel_range[0], self.pixel_range[1])
 
         # Clip the pixel values
